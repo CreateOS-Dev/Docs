@@ -1,62 +1,81 @@
-# Repository layout
+# How the source tree fits together
 
-CreateOS has two supported source layouts. Both use the same kernel build
-interface and expect the userland, docs, and SDK at fixed paths under the
-repository root.
+CreateOS can be kept in one complete source tree or split into four
+component repositories. The kernel build expects the same directory layout
+either way.
 
-## Private monorepo
+## Complete source tree
 
-The private CreateOS repository keeps all source in one Git repository:
+The full tree contains everything needed to build an image:
 
-- `kernel/`, `boot/`, `linker.ld`, and the top-level `Makefile` are the kernel
-  and build/boot infrastructure.
-- `rootfs_maker/` contains the guest userland, syscall compatibility library,
-  host image tools, and root filesystem builder.
-- `sdk/` contains app headers, libraries, examples, and build scripts.
-- `docs/` contains kernel, userland, and SDK documentation.
-- `build/` contains generated artifacts and is not source of record.
+- `kernel/`, `boot/`, `linker.ld`, `configs/`, and the root `Makefile` build
+  the kernel and boot image.
+- `rootfs_maker/` builds guest programs and the CFS5 root filesystem.
+- `sdk/` contains application headers, libraries, build rules, and examples.
+- `docs/` contains the guides.
+- `build/` holds generated output and is not source.
 
-This layout has no Git submodule or clone requirement for an ordinary build.
-The SDK source is tracked in the private repository.
+An ordinary build of this tree does not need to clone any component repo.
 
-To synchronize private sources into local public project folders, run
-`scripts/sync-public.sh [PUBLIC_WORKSPACE]`. By default, it uses
-`../CreateOS-public/` and creates the `CreateOS/`, `rootfs_maker/`, `Docs/`,
-and `sdk/` directories there when missing. It performs local copies only,
-replaces stale source files within these four exact folders, and preserves
-`.git` metadata when present. It does not commit or push; review and publish
-the changes with GitHub Desktop.
+## Four local project folders
 
-## Public kernel repository
+To copy the complete tree into four separate working folders, run
+`scripts/sync-public.sh` from the repository root:
 
-The public `CreateOS` repository is intended to contain the kernel, boot
-infrastructure, linker script, and top-level build scripts. Its
-`scripts/assemble-project.sh` clones or fast-forwards the three component
-repositories into `/rootfs_maker/`, `/docs/`, and `/sdk/` within the kernel
-checkout:
+```sh
+scripts/sync-public.sh
+```
 
-| Directory | Repository | Required files |
-| --- | --- | --- |
-| `rootfs_maker/` | [CreateOS-Dev/rootfs_maker](https://github.com/CreateOS-Dev/rootfs_maker) | `Makefile`, `lib/user_syscall.h`, `root/prog/shell/shell.c` |
-| `docs/` | [CreateOS-Dev/Docs](https://github.com/CreateOS-Dev/Docs) | `kernel/overview.md`, `userland/userland.md`, `sdk/app-development.md` |
-| `sdk/` | [CreateOS-Dev/sdk](https://github.com/CreateOS-Dev/sdk) | `Makefile`, `app.mk`, `include/createos/uikit.h` |
+The default destination is `../CreateOS-public/`:
 
-The layout matches build references such as `make -C rootfs_maker` and
-`rootfs_maker`'s relative access to `../kernel` and `../sdk`. The script
-verifies each remote and required source files. Existing component clones are
-updated only when their worktrees are clean and can fast-forward. Run
-`scripts/assemble-project.sh --check` to validate existing clones without
-fetching, or `--build` to clone/update the components and build the complete
-OS. The public component repositories must be populated first; use
-`scripts/sync-public.sh` from the private checkout and GitHub Desktop to
-publish them.
+```text
+CreateOS-public/
+├── CreateOS/
+├── rootfs_maker/
+├── Docs/
+└── sdk/
+```
 
-## Local customization
+This is a local file sync. It does not run Git commands or access a network.
+Source files in those four destination folders are replaced to match the
+complete tree, while any `.git` metadata is left in place. Keep edits in the
+complete tree, then review and publish each folder with GitHub Desktop.
 
-Edit the private monorepo as the source of truth, then run
-`scripts/sync-public.sh` to refresh the public checkout working trees. That
-sync intentionally removes stale files inside the four exact public
-repositories while preserving Git metadata. Do not keep uncommitted work only
-in those generated source trees. Review and publish each resulting repository
-with GitHub Desktop. Do not treat `build/` as a source directory or put
-generated images in component repositories.
+Use a different destination by passing it as the first argument:
+
+```sh
+scripts/sync-public.sh /path/to/CreateOS-projects
+```
+
+## Build from the kernel repo
+
+The kernel Makefile expects these component repos alongside it inside the
+kernel checkout:
+
+| Directory | Component repo |
+| --- | --- |
+| `rootfs_maker/` | `CreateOS-Dev/rootfs_maker` |
+| `docs/` | `CreateOS-Dev/Docs` |
+| `sdk/` | `CreateOS-Dev/sdk` |
+
+Run `scripts/assemble-project.sh` in the kernel repo to clone a missing
+component or fast-forward a clean existing checkout. It uses Git for that
+operation. It will not overwrite an unrelated directory, a dirty checkout,
+or a checkout with an unexpected remote.
+
+```sh
+scripts/assemble-project.sh
+scripts/assemble-project.sh --check
+scripts/assemble-project.sh --build
+```
+
+`--check` validates existing checkouts without fetching. `--build` updates
+the components and then builds the OS. The normal kernel build also prepares
+components before compiling.
+
+## Layout matters
+
+The userland Makefile uses paths such as `../kernel` and `../sdk`, so these
+folders must sit beside the kernel directory in the assembled tree. Moving
+one component without updating those references will break app builds.
+Generated disk images belong under `build/`, never inside a source component.

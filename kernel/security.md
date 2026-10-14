@@ -1,32 +1,48 @@
-# Security model and limitations
+# Security and trust
 
-CreateOS is experimental. It is not suitable for protecting sensitive data or
-exposing as a production service. The current user, syscall, memory, filesystem,
-network, and driver implementations have not been established as a complete
-security boundary.
+CreateOS is experimental software. Treat it as a development system, not as a
+place to keep sensitive data or run services on an untrusted network.
 
-Some code performs user-pointer validation, executable checks, stack
-protection, and network input validation. These measures are useful but do not
-constitute a complete audit or a guarantee against memory corruption,
-privilege escalation, data loss, or denial of service.
+## User programs
 
-The kernel stack-protector guard is initialized from RDSEED/RDRAND after CPU
-feature detection. Boot stops if the hardware random source is unavailable or
-returns an unusable guard; the kernel does not substitute a predictable
-pseudorandom value. POSIX file descriptors and the persistent outbound TCP
-stream are revoked or rejected across user-image transitions using a
-per-console execution generation. These controls do not create independent
-ring-3 processes: credentials, working directories, and other state remain
-console-scoped, and applications replace one another rather than being
-scheduled independently.
+Applications run in ring 3 with a separate user address space. Syscall
+handlers validate user pointers before using them and check file permissions
+against the active account. The kernel also tracks system privileges for
+selected applications and gates administrative operations.
 
-Development guidance:
+These boundaries are useful, but they are not a security certification.
+Memory management, process transitions, permission changes, and filesystem
+recovery continue to evolve. Do not assume that an `.APPL` file is sandboxed:
+it is a native executable running with the caller's guest privileges.
 
-- Run untrusted experiments in a disposable VM without shared folders or
-  sensitive host devices.
-- Do not attach a valuable physical disk or pass-through device.
-- Treat malformed filesystem images, network frames, and syscall arguments as
-  adversarial inputs and test bounded failure paths.
-- Keep downloaded third-party code pinned and retain upstream license files.
-- Report a feature as secure only after focused testing and review of the
-  entire path, not because an individual check or driver exists.
+## Accounts and files
+
+First boot creates the initial account. Account records live in the root
+filesystem; home-directory ownership is assigned from account data. Back up
+the CFS5 image before experimenting with account files or filesystem tools.
+
+The `sudo` command and system-privileged applications are part of the userland
+and kernel policy. A program extension or executable-name suffix is not, by
+itself, a trust boundary.
+
+## Networking
+
+Outbound DHCP, DNS, ICMP, TCP, HTTP, and HTTPS support exists in varying
+degrees. A limited TCP listener is available to system-privileged programs.
+There is no general ingress firewall, and the listener API is not POSIX
+sockets. Do not expose the sample HTTP server to an untrusted network.
+
+HTTPS requires a valid clock, hardware entropy, and a trusted CA bundle.
+Certificate verification failures should be treated as failures; do not
+replace them with a plaintext fallback.
+
+## Development practice
+
+- Use disposable QEMU disks for experiments that may damage filesystem data.
+- Run untrusted guest programs only in a VM you can throw away.
+- Check third-party source licenses and keep their notices with the source.
+- Report security problems privately to the project maintainer rather than
+  publishing exploit details before a fix is available.
+
+For the implementation details, see `kernel/security/`,
+`kernel/syscall.c`, and the [syscall guide](../userland/syscalls.md).

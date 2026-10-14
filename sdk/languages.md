@@ -1,102 +1,80 @@
-# Learning CreateOS programming languages
+# Languages in CreateOS
 
-This guide distinguishes languages that are usable in the guest OS from
-languages used only on the development host. A compiler being available on the
-host does not mean its programs can run on CreateOS.
+The guest can run native x86-64 programs and Lua scripts. Other languages
+need a runtime and a port that matches the kernel's executable and system-call
+interfaces; a compiler installed on the host does not provide that runtime.
 
-## What runs in the guest today
-
-| Language | Guest status | Use |
+| Language | Available now | Build or run |
 | --- | --- | --- |
-| C | Native x86-64 applications are supported; guest TinyCC is installed as `/bin/tcc.bin` and `/app/system/bin/tcc.APPL`. | Compile a static native program using CreateOS headers and libraries. |
-| Lua 5.4 | Lua and `luac` are installed as `.APPL` applications. | Run scripts with `lua file.lua`; compile bytecode with `luac`. |
-| x86-64 assembly | Used for kernel, startup, and low-level SDK components. | `.S` files in an SDK application's `src/` tree are assembled by the cross-toolchain. |
-| Shell | Host Bash/sh scripts build and package the OS. | The guest command shell is not a POSIX shell interpreter and does not execute `.sh` files. |
-| Python | Used by host-side configuration/build utilities. | No guest Python runtime is included. |
-| C++, Rust, Go, Java, JavaScript, and other runtimes | Not currently supported as guest toolchains/runtimes. | Host availability does not provide guest ABI/runtime support. |
+| C | Host SDK cross-build and guest TinyCC | Build `.APPL` with `sdk/app.mk`, or use `tcc` in the guest. |
+| Lua 5.4.8 | Guest interpreter and bytecode compiler | `lua script.lua`; compile with `luac`. |
+| x86-64 assembly | Assembly in kernel and SDK apps | SDK apps can include uppercase `.S` sources. |
+| CreateOS shell | Small interactive command interpreter | Enter commands at the guest prompt; it is not Bash. |
+| Python | Host-side helper scripts only | No guest Python interpreter is provided. |
+| C++, Rust, Go, Java, JavaScript | No maintained guest runtime/toolchain | Host-built programs are not runnable in CreateOS by default. |
 
-The guest compiler does not implement dynamic linking or TinyCC's `-run`
-execution mode. Compile a C program to a static executable, then launch the
-result as a separate program:
+The detailed guides for the supported programming languages are
+[C](c.md), [Lua](lua.md), and [x86-64 assembly](assembly.md). The guest's
+interactive command interface is documented separately in
+[Shell commands](../userland/shell.md); it is not a shell scripting runtime.
+
+## C
+
+For an SDK project or the included examples, build the pinned cross-toolchain
+and use the SDK:
 
 ```sh
+make toolchain
+./sdk/scripts/build-example.sh hello
+./sdk/scripts/build-example.sh uikit-demo
+```
+
+The SDK makes static `.APPL` executables for CreateOS. Guest TinyCC is useful
+for short programs, but currently has no dynamic linker or `-run` mode:
+
+```text
 tcc -o /home/root/hello hello.c
 chmod u+x /home/root/hello
 /home/root/hello
 ```
 
-Compiler input and output paths follow CreateOS's filesystem and permission
-rules. Only compile source code you trust; generated native binaries execute
-with the caller's guest privileges.
+See [application development](app-development.md) for project setup, libraries,
+and installing an app in the image.
 
-## Learn C with the SDK
+## Lua
 
-The SDK contains two buildable examples:
+Lua 5.4.8 and `luac` are already built into the guest userland. The upstream
+source used by the component build lives at
+`kernel/lib/third_party/lua-5.4.8/`; CreateOS compatibility code is in
+`rootfs_maker/root/app/lua/`. There is no separate Lua installation needed
+for guest scripts.
 
-```sh
-./sdk/scripts/build-example.sh hello
-./sdk/scripts/build-example.sh uikit-demo
+```text
+lua -v
+lua /home/root/hello.lua
+luac -o /home/root/hello.luac /home/root/hello.lua
+lua /home/root/hello.luac
 ```
 
-For your own project, create a Makefile that sets `APP_NAME` and
-`APP_SRC_DIR`, then includes `sdk/app.mk`. C sources and uppercase `.S`
-assembly files below `src/` are discovered recursively. Build products are
-kept under `build/`; use `make install` or copy the finished `.APPL` into
-`rootfs_maker/root/appcustom/` to add it to the userland image.
+Read the [Lua guide](lua.md) for libraries, module paths, limits, and behavior
+that differs from desktop Lua.
 
-Use `<createos/uikit.h>` for the current terminal UI:
+## x86-64 assembly
 
-```c
-#include <createos/uikit.h>
+The SDK accepts uppercase `.S` files recursively under an app's `src/`
+directory. It compiles them with the x86-64 cross-GCC and links them into the
+same `.APPL` as C code. The SDK expects GNU assembler (GAS) syntax for these
+app files. The app linker supplies the CreateOS startup entry; assembly
+functions should normally be called from the C `main`, rather than defining
+another `_start`.
 
-int main(void)
-{
-    createos_ui_t ui;
-    if (createos_ui_init(&ui) < 0)
-        return 1;
-    if (createos_ui_clear() < 0 ||
-        createos_ui_write_centered(&ui, ui.rows / 2,
-                                   "Hello, CreateOS", 0x0F) < 0) {
-        createos_ui_shutdown();
-        return 1;
-    }
-    createos_ui_read_key();
-    return createos_ui_shutdown() < 0;
-}
-```
+See the [assembly guide](assembly.md) for a working C/GAS example and the
+difference between SDK assembly and the NASM sources used in boot code.
 
-The UI Kit writes to the console; it is not a desktop windowing API. Read
-[application development](./app-development.md) for library, syscall, build,
-and installation details.
+## Languages not bundled
 
-## Learn Lua
-
-Lua is the guest's interpreted scripting language. Start with a script such as
-`hello.lua`:
-
-```lua
-print("Hello from CreateOS")
-for count = 1, 3 do
-    print("step", count)
-end
-```
-
-Run it with `lua hello.lua`. Lua includes its base and standard libraries,
-with native C modules disabled. Its OS and I/O functions are not a complete
-POSIX host interface; in particular, `os.execute` and `io.popen` do not launch
-programs. See [userland runtime details](../userland/userland.md).
-
-## Downloading another language or library
-
-There is no general-purpose "download a language" command in the guest. A
-compiler/runtime must be ported to the CreateOS ABI, compiled for x86-64
-freestanding execution, linked against supported syscalls/libraries, and
-tested in QEMU before it can be advertised as a guest language.
-
-When developing a port, add a source dependency only with a reviewed upstream
-release or commit pinned in the build scripts, verify its published
-cryptographic digest where available, keep downloaded source under ignored
-`build/` storage, and document the exact guest features and missing
-capabilities. Do not download a moving branch, bulk-copy unrelated language
-implementations into the SDK, or treat a successful host build as proof that
-guest execution works.
+There is no guest Python, C++, Rust, Go, Java, or JavaScript runtime in this
+tree. Do not copy a host executable into the root filesystem and expect it to
+run: it must target CreateOS's executable format and ABI, and any interpreted
+language also needs its interpreter and supporting libraries. Porting another
+language means maintaining those pieces and testing them against this kernel.

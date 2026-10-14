@@ -1,77 +1,55 @@
-# Kernel and memory architecture
+# Kernel notes
 
-## Architecture
+The kernel is freestanding C with x86-64 assembly for the parts that need to
+touch CPU state directly. The public interfaces are mostly collected under
+`kernel/header/`; implementations sit beside them in `kernel/`.
 
-The current supported build target is x86-64. Low-level boot, CPU, interrupt,
-syscall, APIC, and TSS code is kept under `kernel/arch/`; generic declarations
-are under `kernel/header/`. A boot loader being able to load the image does not
-make another CPU architecture supported. Runtime interrupt routing currently
-uses the legacy PIC: IOAPIC routing is deferred because its timer delivery has
-not yet passed periodic-tick tests in QEMU.
+## Startup and CPU state
 
-## Kernel subsystems
+`boot/boot.S` is the Multiboot2 entry point. The kernel's architecture code
+sets up descriptor tables, interrupt handling, the syscall entry path, task
+state, and the initial kernel stack. Start with `kernel/main.c` to follow the
+initialization sequence. Boot messages go to the active TTY and serial output.
 
-- PCI discovery provides device identities and BAR information to drivers.
-- The console layer provides COM1 8250/16550 serial, VGA/framebuffer, and TTY
-  facilities. COM1 is detected with a UART loopback check, transmit polling is
-  bounded, and the TTY falls back from serial if the UART fails at runtime.
-- Framebuffer text can use the bundled Noto Sans TrueType font through
-  libschrift. UTF-8 output is decoded into Unicode code points before console
-  cells are stored, and the display font can be changed in Settings. The font
-  is embedded in the kernel and installed under `/usr/share/fonts`.
-- TinyGL is built as a kernel-side software renderer. Kernel clients can use
-  `framebuffer_tinygl_init()` and `framebuffer_tinygl_present()` from
-  `kernel/header/drivers/tinygl.h`; the current adapter targets 32-bit
-  framebuffers and uses TinyGL's 16-bit internal color buffer. TinyGL is not
-  exposed as a userland graphics API.
-- Clock/timer code supplies ticks used by timeouts and driver polling.
-- The memory subsystem provides physical/virtual memory helpers and user
-  address-space setup. The VMM can create uncached identity mappings for
-  MMIO ranges across the low canonical address space, including PCI BARs above
-  4 GiB, creating page-table levels and splitting existing 2 MiB mappings as
-  needed.
-- ACPI HPET tables are validated for system-memory GAS entries. A supported
-  64-bit HPET counter provides monotonic nanoseconds; the PIT remains the
-  interrupt and timeout source and is used when HPET is absent or unsupported.
-- `kernel/proc/appl.c` loads the current user executable format; syscall code
-  exposes kernel operations to user applications.
-- The VFS dispatches file operations to filesystem implementations.
-- Linux user applications, Linux kernel modules, and Linux driver interfaces
-  are not supported. Linux application compatibility would require a Linux
-  syscall ABI, ELF/interpreter and dynamic-library support, process/signal/
-  memory semantics, and a compatible C runtime. Linux kernel drivers depend on
-  Linux kernel internals and cannot be loaded as CreateOS drivers.
+## Memory and user programs
 
-## Memory and process limitations
+`kernel/memory/` contains the physical-frame allocator and virtual-memory
+mapping code. User programs are ELF64 images loaded into a separate user
+address space. Before the kernel copies syscall arguments or buffers, it
+checks that the supplied user addresses are readable or writable as needed.
 
-CreateOS is not a full process-isolated Unix kernel. Its executable loading,
-address-space management, process control, fork/wait behavior, and resource
-accounting remain limited and must be assessed against the implementation
-before relying on them. The existence of a syscall declaration is not proof
-that it has complete POSIX semantics.
+`kernel/proc/` handles executable loading, account state, and synchronous
+process operations. `exec` replaces the current user image; `sys_run` can run
+a child image and return its status. The `fork`/`wait` subset is serialized:
+it is not a preemptive, concurrently scheduled process model.
 
-The native `sys_run` syscall provides a synchronous child-image transition for
-applications that need to run a command and inspect its exit status. It saves
-and restores the caller's syscall frame, user address space, heap bookkeeping,
-privilege state, and working directory, and permits at most eight nested
-children. It does not implement `fork`/`wait`, per-process syscall stacks,
-independent descriptors, or process-level isolation; transitions invalidate
-console-scoped descriptors.
+## System calls
 
-The console's Unicode path decodes UTF-8 output; it does not implement
-system-wide UTF-16 text storage or bidirectional text layout. The Noto Sans
-renderer currently uses fixed-width console cells and falls back to the
-bitmap fonts if TrueType initialization or glyph rendering fails.
+The syscall numbers and user-facing declarations are in
+`kernel/header/syscall.h` and `rootfs_maker/lib/user_syscall.h`. Entry and
+register handling are in `kernel/arch/x86_64/syscall.asm`; handlers are in
+`kernel/syscall.c`.
 
-User mappings set write permission on intermediate page-table entries while
-the leaf entry retains each page's requested permissions. This allows writable
-user stack/data pages without making read-only executable pages writable.
-Copy-on-write, VMA tracking, demand paging, and a page cache are not implemented.
+When changing the ABI, update both kernel and userland declarations. Check
+argument count, pointer validation, path permissions, and the behavior on a
+failed copy. See [the syscall guide](../userland/syscalls.md) for the current
+groups and conventions.
 
-## Extending the kernel
+## Filesystems
 
-Put public interfaces in the relevant subdirectory of `kernel/header/` and
-implementations in `kernel/`. Keep platform-specific operations behind
-existing architecture or device interfaces. Add sources to the explicit
-network source list or the normal kernel source discovery as appropriate, then
-run `make verify-toolchain` and build the kernel before testing in QEMU.
+The VFS connects the kernel to filesystem drivers. CFS5 is the root
+filesystem and is implemented in `kernel/fs/`; its host tools live in
+`rootfs_maker/tools/`. The disk image is built separately from the kernel ELF
+and included in the GRUB ISO as a boot file.
+
+## A useful path through the code
+
+For a small kernel change, trace the feature from its header to its caller and
+then to its implementation. For example, a filesystem syscall passes through
+the user wrapper, syscall entry, handler and permission check, then the VFS
+and CFS5 driver. Keeping that path intact is usually more important than
+adding another helper layer.
+
+Build and run changes using [the build guide](./build-and-run.md). Kernel
+compilation alone does not exercise interrupt timing, hardware behavior, or
+user/kernel transitions; use QEMU for changes that affect runtime.
