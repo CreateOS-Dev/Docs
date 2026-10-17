@@ -12,7 +12,7 @@ matching names do not guarantee identical behavior.
 
 | Area | Examples |
 | --- | --- |
-| Console and TTY | `SYS_PUTS`, `SYS_GETC`, `SYS_TTY_INFO`, cursor, mouse, clipboard |
+| Console and TTY | `SYS_PUTS`, `SYS_GETC`, `SYS_TTY_INFO`, cursor, mouse, clipboard, Ctrl+C polling |
 | Files and directories | `SYS_OPEN`, `SYS_READ`, `SYS_WRITE`, `SYS_STAT`, `SYS_MKDIR`, `SYS_UNLINK`, `SYS_RENAME`, `SYS_GETDENTS64` |
 | Processes | `SYS_EXEC`, `SYS_RUN`, `SYS_FORK`, `SYS_WAIT`, `SYS_GETPID`, `SYS_EXIT` |
 | Users | login, logout, account lookup, password verification, roles, lock/enable |

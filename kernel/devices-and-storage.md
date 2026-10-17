@@ -16,6 +16,11 @@ PCI, USB, audio, storage, and network code. Individual functions may be
 limited or polling-based; check the relevant driver before depending on a
 specific device or interrupt path.
 
+TTY information distinguishes the dedicated graphical console from the
+framebuffer output mode. When framebuffer output is active, the
+`TTY_FLAG_FRAMEBUFFER` flag is set for every console rendered through it;
+`TTY_FLAG_GRAPHICAL` continues to identify the dedicated graphical console.
+
 ## Disk controllers
 
 The kernel has ATA, AHCI, and NVMe-related storage code. CFS5 uses the block
@@ -47,6 +52,15 @@ contains files you care about; recreating it discards that data.
 USB and HID support is under `kernel/drivers/usb/`. Keyboard and mouse
 emulation in QEMU are useful for development, but device enumeration,
 controller variants, hubs, and physical USB storage need separate testing.
+
+## Keyboard layouts
+
+Built-in keymaps are stored under `rootfs_maker/root/etc/keyboards/`. The
+Settings app offers French AZERTY Mac and English ABC Mac, grouped by
+language; a user's selection is restored at login. Layout files map PC
+set-1 scancodes to normal and shifted bytes. They may also define two
+additional columns for Option and Option+Shift output. Legacy `us.lyt` and
+`fr-azerty.lyt` selections continue to work.
 
 ## Fonts and cursor assets
 

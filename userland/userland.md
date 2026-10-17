@@ -53,6 +53,13 @@ system-provided applications include:
 - **Lua** and **luac** for running Lua scripts and compiling Lua bytecode.
 - **TinyCC** for building static native C programs in the guest.
 
+In **Settings**, select **Keyboard layout** and press Enter to open the
+language-grouped layout chooser. The current choices are **French — AZERTY
+Mac** and **English — ABC Mac**. The selection is stored for the signed-in
+account and restored at the next login. The older `us.lyt` and
+`fr-azerty.lyt` layouts remain available to the `keymap` command for existing
+setups.
+
 TextEdit is a text-mode application, not a graphical desktop editor. It
 supports multiple tabs and basic source highlighting. See the app's source at
 `rootfs_maker/root/app/textedit/`.
