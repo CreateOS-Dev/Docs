@@ -1,5 +1,5 @@
 # CreateOS notes
-
+CreateOS assisted with AI (Not developed with AI) 
 These pages are written for people building, using, or changing CreateOS.
 They focus on the behavior in the source tree today; this is still a
 developing OS, so check the code when a detail matters.
